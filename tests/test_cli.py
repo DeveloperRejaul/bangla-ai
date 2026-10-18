@@ -2,7 +2,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from local_ai import inference
+from local_ai import inference, training
 from local_ai.cli import app
 
 runner = CliRunner()
@@ -10,6 +10,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 VALID_FIXTURE = FIXTURES / "sample_valid.jsonl"
 INVALID_FIXTURE = FIXTURES / "sample_invalid.jsonl"
 EVAL_VALID_FIXTURE = FIXTURES / "eval_valid.jsonl"
+TRAIN_FIXTURE = FIXTURES / "train_bangla_v1.jsonl"
 
 
 def test_help_exits_zero_and_lists_commands():
@@ -133,11 +134,82 @@ def test_dataset_prepare_rejects_bad_ratios(tmp_path):
     assert "must be less than 1" in result.output
 
 
-def test_train_never_runs_silently():
-    result = runner.invoke(app, ["train"])
-    assert result.exit_code == 2
-    assert "EXPERIMENTAL" in result.output
-    assert "No training job has been started" in result.output
+def test_train_run_is_a_dry_run_without_yes(tmp_path):
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    result = runner.invoke(
+        app,
+        ["train", "run", str(TRAIN_FIXTURE), "--checkpoint", str(checkpoint), "--output-dir", str(tmp_path / "runs")],
+    )
+    assert result.exit_code == 0
+    assert "Dry run only" in result.output
+    assert "NOT reliably inject new facts" in result.output
+
+
+def test_train_run_never_trains_on_a_missing_checkpoint(tmp_path):
+    missing = tmp_path / "no-checkpoint"
+    result = runner.invoke(
+        app,
+        [
+            "train", "run", str(TRAIN_FIXTURE),
+            "--checkpoint", str(missing),
+            "--output-dir", str(tmp_path / "runs"),
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "never downloads it automatically" in result.output
+
+
+def test_train_run_launches_training_only_with_yes(tmp_path, monkeypatch):
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    monkeypatch.setattr(training, "run_training", lambda config: config.output_dir)
+    result = runner.invoke(
+        app,
+        [
+            "train", "run", str(TRAIN_FIXTURE),
+            "--checkpoint", str(checkpoint),
+            "--output-dir", str(tmp_path / "runs"),
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Training complete" in result.output
+
+
+def test_train_compare_reports_base_vs_tuned(tmp_path, monkeypatch):
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    adapter = tmp_path / "adapter"
+    adapter.mkdir()
+
+    fake_result = training.ComparisonResult(
+        line_number=1,
+        question="Q",
+        reference="R",
+        base_prediction="b",
+        tuned_prediction="t",
+        base_token_f1=0.1,
+        tuned_token_f1=0.9,
+        base_char_similarity=0.1,
+        tuned_char_similarity=0.9,
+    )
+    monkeypatch.setattr(training, "compare_base_and_tuned", lambda *a, **k: [fake_result])
+
+    result = runner.invoke(
+        app,
+        [
+            "train", "compare", str(EVAL_VALID_FIXTURE),
+            "--checkpoint", str(checkpoint),
+            "--adapter", str(adapter),
+            "--output-dir", str(tmp_path / "comparisons"),
+        ],
+    )
+    assert result.exit_code == 0
+    assert "base mean_token_f1:  0.10" in result.output
+    assert "tuned mean_token_f1: 0.90" in result.output
+    assert "small sample" in result.output
 
 
 def test_evaluate_runs_with_mocked_inference_and_writes_artifacts(tmp_path, monkeypatch):

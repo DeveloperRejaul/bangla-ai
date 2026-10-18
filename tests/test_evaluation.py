@@ -20,7 +20,13 @@ BANGLA_V2_FIXTURE = FIXTURES / "eval_bangla_v2.jsonl"
 
 
 def _config() -> Config:
-    return Config(ollama_host="http://localhost:11434", model_name="qwen3:4b", request_timeout_seconds=5, debug=False)
+    return Config(
+        ollama_host="http://localhost:11434",
+        model_name="qwen3:4b",
+        request_timeout_seconds=5,
+        debug=False,
+        mlx_checkpoint_path="models/qwen3-4b-mlx-4bit",
+    )
 
 
 # --- metric functions -------------------------------------------------

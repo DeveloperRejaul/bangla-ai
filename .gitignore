@@ -23,5 +23,9 @@ data/eval/*
 artifacts/*
 !artifacts/.gitkeep
 
+# Downloaded model checkpoints (Milestone 5, MLX): large binary files,
+# never committed. See docs/TRAINING.md for how to fetch one.
+models/
+
 # OS
 .DS_Store

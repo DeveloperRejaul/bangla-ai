@@ -5,7 +5,13 @@ from local_ai.inference import OllamaError, generate
 
 
 def _config(host: str) -> Config:
-    return Config(ollama_host=host, model_name="qwen3:4b", request_timeout_seconds=2, debug=False)
+    return Config(
+        ollama_host=host,
+        model_name="qwen3:4b",
+        request_timeout_seconds=2,
+        debug=False,
+        mlx_checkpoint_path="models/qwen3-4b-mlx-4bit",
+    )
 
 
 def test_generate_rejects_empty_prompt():

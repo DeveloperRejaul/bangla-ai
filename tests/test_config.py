@@ -7,6 +7,7 @@ def test_defaults_when_env_empty():
     assert config.model_name == "qwen3:4b"
     assert config.request_timeout_seconds == 180
     assert config.debug is False
+    assert config.mlx_checkpoint_path == "models/qwen3-4b-mlx-4bit"
 
 
 def test_env_overrides_defaults():
@@ -16,12 +17,22 @@ def test_env_overrides_defaults():
             "LOCAL_AI_MODEL_NAME": "some-model:1b",
             "LOCAL_AI_TIMEOUT_SECONDS": "15",
             "LOCAL_AI_DEBUG": "true",
+            "LOCAL_AI_MLX_CHECKPOINT": "models/custom-checkpoint",
         }
     )
     assert config.ollama_host == "http://localhost:9999"
     assert config.model_name == "some-model:1b"
     assert config.request_timeout_seconds == 15
     assert config.debug is True
+    assert config.mlx_checkpoint_path == "models/custom-checkpoint"
+
+
+def test_rejects_empty_mlx_checkpoint_path():
+    try:
+        load_config(env={"LOCAL_AI_MLX_CHECKPOINT": "   "})
+        assert False, "expected ConfigError"
+    except ConfigError:
+        pass
 
 
 def test_rejects_host_without_scheme():

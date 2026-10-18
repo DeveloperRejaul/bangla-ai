@@ -3,19 +3,22 @@
 `ask`, `chat`, and `models` talk to a local Ollama instance (Milestone 2).
 `dataset validate`/`dataset prepare` work on local JSONL files
 (Milestone 3). `evaluate` scores the local model against a reference
-JSONL dataset (Milestone 4). `train` is still a placeholder for
-Milestone 5. No command here calls a hosted AI API, and no command
-starts a training job.
+JSONL dataset (Milestone 4). `train run`/`train compare` do LoRA
+fine-tuning via Apple MLX and base-vs-tuned comparison (Milestone 5;
+see docs/TRAINING.md). No command here calls a hosted AI API. `train run`
+never launches training without the --yes flag, and never downloads a
+model checkpoint itself.
 """
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import typer
 from rich.console import Console
 
-from local_ai import dataset, evaluation, inference
+from local_ai import dataset, evaluation, inference, training
 from local_ai.config import Config, ConfigError, load_config
 
 app = typer.Typer(
@@ -25,6 +28,8 @@ app = typer.Typer(
 )
 dataset_app = typer.Typer(help="Dataset validation and preparation (Milestone 3).")
 app.add_typer(dataset_app, name="dataset")
+train_app = typer.Typer(help="LoRA fine-tuning via Apple MLX and base-vs-tuned comparison (Milestone 5).")
+app.add_typer(train_app, name="train")
 
 console = Console()
 
@@ -35,16 +40,6 @@ def _load_config_or_exit() -> Config:
     except ConfigError as exc:
         typer.secho(f"Configuration error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
-
-
-def _not_implemented(feature: str, milestone: int) -> None:
-    typer.secho(
-        f"'{feature}' is not implemented yet (planned for Milestone {milestone}). "
-        "Configuration was validated successfully.",
-        fg=typer.colors.YELLOW,
-        err=True,
-    )
-    raise typer.Exit(code=2)
 
 
 @app.command()
@@ -192,16 +187,141 @@ def dataset_prepare(
         raise typer.Exit(code=1)
 
 
-@app.command()
-def train() -> None:
-    """Run a LoRA/PEFT fine-tuning job (experimental, not yet implemented)."""
-    typer.secho(
-        "EXPERIMENTAL: fine-tuning is not implemented yet (planned for Milestone 5). "
-        "No training job has been started.",
-        fg=typer.colors.YELLOW,
-        err=True,
+@train_app.command("run")
+def train_run(
+    data_path: str = typer.Argument(..., help="Path to a raw JSONL training dataset (same schema as dataset/evaluate)."),
+    checkpoint: str = typer.Option(
+        None, "--checkpoint", help="Local path to the MLX-format base checkpoint. Defaults to LOCAL_AI_MLX_CHECKPOINT."
+    ),
+    output_dir: str = typer.Option("artifacts/lora", "--output-dir", help="Base directory for a new timestamped run."),
+    rank: int = typer.Option(8, "--rank", help="LoRA rank."),
+    layers: int = typer.Option(8, "--layers", help="Number of (final) model layers to fine-tune."),
+    iters: int = typer.Option(200, "--iters", help="Training iterations."),
+    batch_size: int = typer.Option(1, "--batch-size", help="Minibatch size."),
+    learning_rate: float = typer.Option(1e-5, "--lr", help="Learning rate."),
+    val_ratio: float = typer.Option(0.15, "--val-ratio", help="Fraction of data held out for validation during training."),
+    seed: int = typer.Option(42, "--seed", help="Random seed for the data split and training."),
+    yes: bool = typer.Option(False, "--yes", help="Actually launch training. Without this flag, only prints the plan."),
+) -> None:
+    """Prepare data and (with --yes) LoRA fine-tune the local MLX checkpoint.
+
+    Without --yes, this only validates the dataset/checkpoint and prints
+    a dry-run plan (sizes, rough memory/time estimates) - it never trains
+    silently. Never downloads the base checkpoint itself; see
+    docs/TRAINING.md. Fine-tuning here does not guarantee factual accuracy.
+    """
+    config = _load_config_or_exit()
+    checkpoint_path = Path(checkpoint) if checkpoint else Path(config.mlx_checkpoint_path)
+    input_path = Path(data_path)
+    if not input_path.is_file():
+        typer.secho(f"File not found: {input_path}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        training.check_mlx_lm_available()
+    except training.TrainingError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    run_dir = training.new_run_dir(Path(output_dir), checkpoint_path.name)
+    data_dir = run_dir / "data"
+    data_dir.mkdir(parents=True)
+    prep_result = training.prepare_mlx_data_dir(input_path, data_dir, val_ratio=val_ratio, seed=seed)
+    typer.echo(
+        f"Prepared training data: {prep_result.train_count} train, {prep_result.val_count} val "
+        f"({prep_result.invalid_records} invalid line(s) skipped, {prep_result.duplicate_records} duplicate)."
     )
-    raise typer.Exit(code=2)
+    if prep_result.train_count == 0:
+        typer.secho("No valid training records - nothing to train on.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    train_config = training.TrainingConfig(
+        checkpoint_path=checkpoint_path,
+        data_dir=data_dir,
+        output_dir=run_dir,
+        rank=rank,
+        num_layers=layers,
+        iters=iters,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        seed=seed,
+    )
+    typer.echo(training.build_plan_summary(train_config, prep_result.train_count))
+
+    try:
+        training.check_checkpoint_available(checkpoint_path)
+    except training.TrainingError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    if not yes:
+        typer.secho(
+            "Dry run only (no --yes passed) - no training was started.",
+            fg=typer.colors.YELLOW,
+        )
+        return
+
+    typer.secho(f"Starting LoRA training (adapter -> {run_dir}) ...", fg=typer.colors.CYAN)
+    try:
+        training.run_training(train_config)
+    except subprocess.CalledProcessError as exc:
+        typer.secho(f"mlx_lm training process failed (exit code {exc.returncode}).", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    typer.secho(f"Training complete. Adapter + metadata written to {run_dir}", fg=typer.colors.GREEN)
+
+
+@train_app.command("compare")
+def train_compare(
+    eval_path: str = typer.Argument(..., help="Path to a held-out JSONL evaluation dataset (same schema as `evaluate`)."),
+    adapter: str = typer.Option(..., "--adapter", help="Path to a trained adapter directory (output of `train run`)."),
+    checkpoint: str = typer.Option(
+        None, "--checkpoint", help="Local path to the MLX-format base checkpoint. Defaults to LOCAL_AI_MLX_CHECKPOINT."
+    ),
+    output_dir: str = typer.Option(
+        "artifacts/lora-comparisons", "--output-dir", help="Base directory for a new timestamped comparison run."
+    ),
+) -> None:
+    """Compare the base checkpoint against base+adapter on the same held-out eval set.
+
+    Both sides run through the same MLX runtime so the comparison isolates
+    the fine-tuning effect. Reuses evaluate's token_f1/char_similarity
+    metrics - see docs/EVALUATION.md and docs/TRAINING.md.
+    """
+    config = _load_config_or_exit()
+    checkpoint_path = Path(checkpoint) if checkpoint else Path(config.mlx_checkpoint_path)
+    adapter_path = Path(adapter)
+    input_path = Path(eval_path)
+    if not input_path.is_file():
+        typer.secho(f"File not found: {input_path}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    examples, total_lines, skipped = evaluation.load_eval_examples(input_path)
+    if not examples:
+        typer.secho("No valid evaluation examples found.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        with console.status(f"[cyan]Comparing base vs. tuned on {len(examples)} example(s)...", spinner="dots"):
+            results = training.compare_base_and_tuned(checkpoint_path, adapter_path, examples)
+    except training.TrainingError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    run_dir = training.new_run_dir(Path(output_dir), checkpoint_path.name)
+    run_dir.mkdir(parents=True)
+    comparison_path = training.write_comparison(run_dir, results)
+
+    mean_base_f1 = sum(r.base_token_f1 for r in results) / len(results)
+    mean_tuned_f1 = sum(r.tuned_token_f1 for r in results) / len(results)
+    typer.echo(f"Compared {len(results)} example(s):")
+    typer.echo(f"  base mean_token_f1:  {mean_base_f1:.2f}")
+    typer.echo(f"  tuned mean_token_f1: {mean_tuned_f1:.2f}")
+    typer.secho(
+        "This is a small sample - read the per-example rows before concluding anything; "
+        "fine-tuning does not guarantee factual accuracy.",
+        fg=typer.colors.YELLOW,
+    )
+    typer.secho(f"Comparison written to {comparison_path}", fg=typer.colors.GREEN)
 
 
 @app.command()

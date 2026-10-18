@@ -3,7 +3,9 @@
 All settings come from environment variables (optionally loaded from a
 .env file by the shell or docker compose's env_file). Nothing here talks
 to a hosted AI API: the only network target is the local inference
-runtime (Ollama), configured via LOCAL_AI_OLLAMA_HOST.
+runtime (Ollama), configured via LOCAL_AI_OLLAMA_HOST. LOCAL_AI_MLX_CHECKPOINT
+is a local filesystem path only (Milestone 5 LoRA fine-tuning via MLX) -
+it is never auto-downloaded; see docs/TRAINING.md.
 """
 
 from __future__ import annotations
@@ -22,11 +24,13 @@ class Config:
     model_name: str
     request_timeout_seconds: int
     debug: bool
+    mlx_checkpoint_path: str
 
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_MODEL_NAME = "qwen3:4b"
 DEFAULT_TIMEOUT_SECONDS = 180
+DEFAULT_MLX_CHECKPOINT_PATH = "models/qwen3-4b-mlx-4bit"
 
 
 def _parse_bool(raw: str) -> bool:
@@ -69,9 +73,14 @@ def load_config(env: dict[str, str] | None = None) -> Config:
 
     debug = _parse_bool(source.get("LOCAL_AI_DEBUG", "false"))
 
+    mlx_checkpoint_path = source.get("LOCAL_AI_MLX_CHECKPOINT", DEFAULT_MLX_CHECKPOINT_PATH).strip()
+    if not mlx_checkpoint_path:
+        raise ConfigError("LOCAL_AI_MLX_CHECKPOINT must not be empty")
+
     return Config(
         ollama_host=ollama_host,
         model_name=model_name,
         request_timeout_seconds=timeout_seconds,
         debug=debug,
+        mlx_checkpoint_path=mlx_checkpoint_path,
     )
