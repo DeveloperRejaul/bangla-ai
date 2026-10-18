@@ -4,9 +4,9 @@ A local-first, command-line-only AI project: no frontend, no hosted AI
 API, no public server. You type a prompt in the terminal; a model
 running on your own machine answers.
 
-This is Milestone 3 of a staged build (see [Project status](#project-status)
-below): local inference via Ollama, plus dataset validation/preparation,
-are wired up and working.
+This is Milestone 4 of a staged build (see [Project status](#project-status)
+below): local inference via Ollama, dataset validation/preparation, and
+evaluation are wired up and working.
 
 ## Quick start (macOS, Apple Silicon)
 
@@ -33,8 +33,9 @@ local-ai chat                        # interactive loop; 'exit'/'quit' or Ctrl+C
 local-ai dataset validate ./data/raw/my_dataset.jsonl
 local-ai dataset prepare ./data/raw/my_dataset.jsonl --output ./data/processed/train.jsonl \
   --val-ratio 0.1 --test-ratio 0.1   # fixed-seed split, see docs/DATASETS.md
+local-ai evaluate ./data/eval/my_eval.jsonl --output-dir artifacts/evaluations \
+  --pass-threshold 0.5              # see docs/EVALUATION.md for the metrics
 local-ai train                                       # always experimental, never runs silently
-local-ai evaluate                                     # Milestone 4
 ```
 
 `ask`/`chat`/`models` require Ollama to be running locally
@@ -79,13 +80,15 @@ slow on this hardware (a single response took over two minutes in
 testing on this MacBook Air M4). The default timeout was raised to 180s
 accordingly; see `.env.example`.
 
-## Datasets
+## Datasets and evaluation
 
-JSONL validation and preparation are implemented — see
-[docs/DATASETS.md](docs/DATASETS.md) for the schema, commands, and
-provenance/license/consent guidance. Evaluation (Milestone 4) and an
-optional LoRA/PEFT fine-tuning workflow (Milestone 5, gated on verifying
-hardware/framework support) are not implemented yet; see
+JSONL validation/preparation and evaluation are implemented — see
+[docs/DATASETS.md](docs/DATASETS.md) (schema, commands, provenance/
+license/consent) and [docs/EVALUATION.md](docs/EVALUATION.md) (metrics,
+how to keep eval data separate from training data, and a real result
+observed with `qwen3:4b`). An optional LoRA/PEFT fine-tuning workflow
+(Milestone 5, gated on verifying hardware/framework support) is not
+implemented yet; see
 [local_ai_cli_project_spec.md](local_ai_cli_project_spec.md) for the full plan.
 
 ## Tests
@@ -119,12 +122,26 @@ python -m pytest
   hand: confirmed raw input is never modified, duplicate records are
   deduplicated, and splits with the same seed are byte-identical across
   runs.
-- `train`/`evaluate` still exist as placeholders, clearly reporting
-  their target milestone (no command silently pretends to work or
-  starts a job).
+- `evaluate` (`src/local_ai/evaluation.py`, stdlib `difflib`/`json`/
+  `re`, no new dependency): scores the local model against a JSONL
+  reference Q&A dataset (reuses the dataset.py schema; the last message
+  per record is the reference answer) using three documented metrics —
+  `exact_match`, `token_f1`, `char_similarity` (see
+  [docs/EVALUATION.md](docs/EVALUATION.md)) — none of which is exact-match-only.
+  Writes a new timestamped run under `artifacts/evaluations/` each time
+  (`results.jsonl` + `summary.json`), never overwriting a previous run.
+  Verified both with mocked inference (unit tests) and for real against
+  the live `qwen3:4b` model on `tests/fixtures/eval_valid.jsonl` —
+  confirmed the artifacts were written correctly and investigated the
+  (low, honestly reported) scores by reading the raw predictions; see
+  docs/EVALUATION.md for what that run actually showed.
+- `train` still exists as a placeholder, clearly reporting its target
+  milestone (no command silently pretends to work or starts a job).
 - Unit tests for config validation, CLI behavior (mocked inference, so
-  tests don't need Ollama running), inference error handling, and
-  dataset validation/preparation. Verified: `python -m pytest` → 34 passed.
+  tests don't need Ollama running), inference error handling, dataset
+  validation/preparation, and evaluation (metrics, example loading,
+  run/summarize/write, all with mocked inference).
+  Verified: `python -m pytest` → 47 passed.
 
 **Written but not tested:**
 - `Dockerfile` / `compose.yaml` — Docker is not installed on this
@@ -134,7 +151,6 @@ python -m pytest
   from inside a container is documented but not yet verified.
 
 **Not implemented (future milestones):**
-- Evaluation — Milestone 4.
 - LoRA/PEFT fine-tuning — Milestone 5.
 
 **Known limitations:**
@@ -157,3 +173,8 @@ python -m pytest
   prompt, cold or warm) because it's a reasoning/"thinking" model. If
   that's too slow for interactive use, a smaller tag such as
   `qwen3:1.7b` is worth trying instead — not yet benchmarked here.
+- `token_f1`/`char_similarity` score verbose-but-correct answers low
+  when the reference answer is a bare word/phrase, because `qwen3:4b`
+  answers in full sentences by default. Always check `results.jsonl`,
+  not just the summary — see the real example in
+  [docs/EVALUATION.md](docs/EVALUATION.md).

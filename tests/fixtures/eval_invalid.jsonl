@@ -1,0 +1,5 @@
+{"messages":[{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello!"}]}
+{"messages":[{"role":"user","content":"What is this?"},{"role":"assistant","content":"A test."},{"role":"user","content":"Another question?"}]}
+{"foo":"bar"}
+{"messages":[{"role":"assistant","content":"Only answer, no question"}]}
+{"messages":[{"role":"user","content":"Bye"},{"role":"assistant","content":"Goodbye!"}]}

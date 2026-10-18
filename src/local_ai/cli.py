@@ -2,8 +2,9 @@
 
 `ask`, `chat`, and `models` talk to a local Ollama instance (Milestone 2).
 `dataset validate`/`dataset prepare` work on local JSONL files
-(Milestone 3). `train` and `evaluate` are still placeholders for
-Milestones 4-5. No command here calls a hosted AI API, and no command
+(Milestone 3). `evaluate` scores the local model against a reference
+JSONL dataset (Milestone 4). `train` is still a placeholder for
+Milestone 5. No command here calls a hosted AI API, and no command
 starts a training job.
 """
 
@@ -14,7 +15,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from local_ai import dataset, inference
+from local_ai import dataset, evaluation, inference
 from local_ai.config import Config, ConfigError, load_config
 
 app = typer.Typer(
@@ -204,9 +205,67 @@ def train() -> None:
 
 
 @app.command()
-def evaluate() -> None:
-    """Evaluate a model against a dataset (not yet implemented)."""
-    _not_implemented("evaluate", milestone=4)
+def evaluate(
+    dataset_path: str = typer.Argument(
+        ...,
+        help=(
+            "Path to a JSONL evaluation dataset (same schema as training data; "
+            "the last message in each record must be the reference 'assistant' answer)."
+        ),
+    ),
+    output_dir: str = typer.Option(
+        "artifacts/evaluations",
+        "--output-dir",
+        help="Directory to write a new timestamped evaluation run under. Never overwrites a previous run.",
+    ),
+    pass_threshold: float = typer.Option(
+        0.5,
+        "--pass-threshold",
+        help="token_f1 score at/above which an example counts as a 'pass' in the summary (heuristic, not a correctness guarantee).",
+    ),
+) -> None:
+    """Evaluate the local model against a JSONL dataset of reference Q&A pairs.
+
+    Does not use any hosted AI API and does not change model weights.
+    See docs/EVALUATION.md for the metrics and dataset schema.
+    """
+    config = _load_config_or_exit()
+    input_path = Path(dataset_path)
+    if not input_path.is_file():
+        typer.secho(f"File not found: {input_path}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    examples, total_lines, skipped_invalid = evaluation.load_eval_examples(input_path)
+    if skipped_invalid:
+        typer.secho(
+            f"{skipped_invalid} of {total_lines} line(s) were skipped "
+            "(invalid schema, or last message wasn't an 'assistant' reference answer).",
+            fg=typer.colors.YELLOW,
+        )
+    if not examples:
+        typer.secho("No valid evaluation examples found.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        with console.status(
+            f"[cyan]Evaluating {len(examples)} example(s) against {config.model_name}...", spinner="dots"
+        ):
+            results = evaluation.run_evaluation(config, examples, pass_threshold)
+    except inference.OllamaError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    summary = evaluation.summarize(
+        results, config.model_name, input_path, total_lines, skipped_invalid, pass_threshold
+    )
+    run_dir = evaluation.write_run(Path(output_dir), config.model_name, results, summary)
+
+    typer.echo(f"Evaluated {summary.evaluated} example(s) with {config.model_name}:")
+    typer.echo(f"  exact_match_rate:    {summary.exact_match_rate:.2f}")
+    typer.echo(f"  mean_token_f1:       {summary.mean_token_f1:.2f}")
+    typer.echo(f"  mean_char_similarity:{summary.mean_char_similarity:.2f}")
+    typer.echo(f"  passed (f1 >= {pass_threshold:.2f}): {summary.passed}/{summary.evaluated}")
+    typer.secho(f"Results written to {run_dir}", fg=typer.colors.GREEN)
 
 
 def main() -> None:

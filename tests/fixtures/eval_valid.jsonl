@@ -1,0 +1,4 @@
+{"messages":[{"role":"user","content":"What is the capital of Bangladesh?"},{"role":"assistant","content":"Dhaka"}]}
+{"messages":[{"role":"user","content":"বাংলাদেশের জাতীয় ভাষা কী?"},{"role":"assistant","content":"বাংলা"}]}
+{"messages":[{"role":"user","content":"What is 2 plus 2?"},{"role":"assistant","content":"4"}]}
+{"messages":[{"role":"user","content":"বাংলাদেশের জাতীয় ফুল কী?"},{"role":"assistant","content":"শাপলা"}]}

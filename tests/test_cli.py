@@ -9,6 +9,7 @@ runner = CliRunner()
 FIXTURES = Path(__file__).parent / "fixtures"
 VALID_FIXTURE = FIXTURES / "sample_valid.jsonl"
 INVALID_FIXTURE = FIXTURES / "sample_invalid.jsonl"
+EVAL_VALID_FIXTURE = FIXTURES / "eval_valid.jsonl"
 
 
 def test_help_exits_zero_and_lists_commands():
@@ -139,10 +140,35 @@ def test_train_never_runs_silently():
     assert "No training job has been started" in result.output
 
 
-def test_evaluate_is_not_yet_implemented():
-    result = runner.invoke(app, ["evaluate"])
-    assert result.exit_code == 2
-    assert "Milestone 4" in result.output
+def test_evaluate_runs_with_mocked_inference_and_writes_artifacts(tmp_path, monkeypatch):
+    monkeypatch.setattr(inference, "chat", lambda config, messages: "Dhaka")
+    output_dir = tmp_path / "evaluations"
+    result = runner.invoke(
+        app, ["evaluate", str(EVAL_VALID_FIXTURE), "--output-dir", str(output_dir)]
+    )
+    assert result.exit_code == 0
+    assert "Evaluated 4 example(s)" in result.output
+    assert "Results written to" in result.output
+    run_dirs = list(output_dir.iterdir())
+    assert len(run_dirs) == 1
+    assert (run_dirs[0] / "results.jsonl").exists()
+    assert (run_dirs[0] / "summary.json").exists()
+
+
+def test_evaluate_reports_ollama_error(monkeypatch):
+    def _raise(config, messages):
+        raise inference.OllamaError("Could not reach Ollama at http://localhost:11434.")
+
+    monkeypatch.setattr(inference, "chat", _raise)
+    result = runner.invoke(app, ["evaluate", str(EVAL_VALID_FIXTURE)])
+    assert result.exit_code == 1
+    assert "Could not reach Ollama" in result.output
+
+
+def test_evaluate_missing_file():
+    result = runner.invoke(app, ["evaluate", "/no/such/eval.jsonl"])
+    assert result.exit_code == 1
+    assert "File not found" in result.output
 
 
 def test_invalid_config_blocks_ask():

@@ -97,6 +97,13 @@ def _check_line(raw_line: str) -> tuple[dict | None, str | None]:
     return _check_record(record)
 
 
+def parse_record(raw_line: str) -> tuple[dict | None, str | None]:
+    """Validate and normalize a single JSONL line (public entry point for
+    reuse by other modules, e.g. evaluation.py, so they share the exact
+    same schema rules as validate_jsonl/prepare_dataset)."""
+    return _check_line(raw_line)
+
+
 def validate_jsonl(path: Path) -> ValidationResult:
     """Validate a JSONL dataset file without modifying it."""
     errors: list[LineError] = []

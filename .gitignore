@@ -16,8 +16,10 @@ dist/
 # Datasets and model artifacts: never commit these
 data/raw/*
 data/processed/*
+data/eval/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/eval/.gitkeep
 artifacts/*
 !artifacts/.gitkeep
 
