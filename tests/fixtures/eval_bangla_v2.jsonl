@@ -1,0 +1,7 @@
+{"messages":[{"role":"user","content":"বাংলাদেশের রাজধানী কী, এক বাক্যে বলুন।"},{"role":"assistant","content":"বাংলাদেশের রাজধানী ঢাকা।"}]}
+{"messages":[{"role":"system","content":"সংক্ষেপে বাংলায় উত্তর দিন।"},{"role":"user","content":"বাংলাদেশের রাষ্ট্রভাষা কী?"},{"role":"assistant","content":"বাংলাদেশের রাষ্ট্রভাষা বাংলা।"}]}
+{"messages":[{"role":"user","content":"বাংলাদেশের জাতীয় ফুলের নাম কী?"},{"role":"assistant","content":"বাংলাদেশের জাতীয় ফুল হলো শাপলা।"}]}
+{"messages":[{"role":"user","content":"২ + ২ = কত? সংক্ষেপে উত্তর দিন।"},{"role":"assistant","content":"২ + ২ = ৪।"}]}
+{"messages":[{"role":"user","content":"ফটোসিনথেসিস কী? এক বা দুই বাক্যে ব্যাখ্যা করুন।"},{"role":"assistant","content":"ফটোসিনথেসিস হলো সেই প্রক্রিয়া যার মাধ্যমে উদ্ভিদ সূর্যের আলো ব্যবহার করে পানি ও কার্বন ডাই অক্সাইড থেকে খাদ্য তৈরি করে এবং অক্সিজেন নির্গত করে।"}]}
+{"messages":[{"role":"system","content":"Always respond in Bengali, even if the question is in English."},{"role":"user","content":"What is the currency of Bangladesh?"},{"role":"assistant","content":"বাংলাদেশের মুদ্রার নাম টাকা।"}]}
+{"messages":[{"role":"user","content":"বাংলাদেশের জাতীয় পাখির নাম কী?"},{"role":"assistant","content":"বাংলাদেশের জাতীয় পাখি দোয়েল।"}]}

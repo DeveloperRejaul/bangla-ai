@@ -173,8 +173,17 @@ python -m pytest
   prompt, cold or warm) because it's a reasoning/"thinking" model. If
   that's too slow for interactive use, a smaller tag such as
   `qwen3:1.7b` is worth trying instead — not yet benchmarked here.
-- `token_f1`/`char_similarity` score verbose-but-correct answers low
-  when the reference answer is a bare word/phrase, because `qwen3:4b`
-  answers in full sentences by default. Always check `results.jsonl`,
-  not just the summary — see the real example in
-  [docs/EVALUATION.md](docs/EVALUATION.md).
+- `qwen3:4b`'s answer length relative to any single reference string is
+  unpredictable (sometimes far more verbose, sometimes more terse than
+  the reference), so `token_f1`/`passed` systematically undercounts
+  correct answers for this model regardless of how references are
+  worded — confirmed across two real evaluation runs (4/7 correct in a
+  v2 run where only 1/7 "passed"). Always read `results.jsonl`, not
+  just the summary; see the full investigation in
+  [docs/EVALUATION.md](docs/EVALUATION.md). A `system` message
+  explicitly instructing a Bengali response did reliably work, though,
+  for datasets that need Bengali output.
+- `qwen3:4b` has a couple of confirmed, repeatable factual gaps on
+  Bangladesh-specific trivia (got the national flower and national bird
+  wrong in testing, with different wrong answers across repeated runs
+  on the flower question) — a real model limitation, not a scoring bug.

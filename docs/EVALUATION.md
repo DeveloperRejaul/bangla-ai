@@ -135,3 +135,74 @@ bug** — it's two real properties of this model/dataset combination:
 This is exactly why the summary's `passed` count is documented as a
 heuristic: on this run it would have been misleading to report "0/4
 correct" without the context above.
+
+### Investigation + v2 dataset (2026-10-19)
+
+Following up on the v1 result above, each of the 4 v1 failures was
+re-examined individually:
+
+| Question (v1) | Verdict |
+|---|---|
+| Capital of Bangladesh | Correct answer; low score purely from verbose-answer-vs-bare-word reference mismatch. |
+| 2 + 2 | Correct answer; same verbosity mismatch. |
+| National language | Correct in substance ("Bengali"); answered in English rather than the Bengali script the reference used. |
+| National flower | **Genuinely wrong** — model said "জাসমিন" (jasmine); the actual national flower is "শাপলা" (shapla/water lily). |
+
+So 3 of 4 v1 failures were metric/reference-style artifacts, and 1 was
+a real model error.
+
+**`tests/fixtures/eval_bangla_v2.jsonl`** (7 examples) was built to test
+whether better-calibrated references fix the artifact cases, while
+re-testing the one real error:
+- References written as full short sentences matching the model's
+  natural phrasing (not bare words), for factual questions.
+- Two examples add a `system` message explicitly instructing a Bengali
+  response (`"সংক্ষেপে বাংলায় উত্তর দিন।"` / `"Always respond in
+  Bengali, even if the question is in English."`) — the schema already
+  supports `system` role messages, so this needed no code change.
+- One example explicitly asks for a brief answer, to test whether an
+  instruction (rather than reference calibration) controls verbosity.
+- One example is a short-explanation type (photosynthesis), not a bare
+  fact.
+- The national-flower question is repeated (with a fuller reference
+  this time) specifically to check if the wrong answer was consistent.
+- A national-bird question was added for additional factual coverage.
+
+**Real run against `qwen3:4b`** (`artifacts/evaluations/20261018T193828Z_qwen3-4b/`):
+`exact_match_rate 0.14`, `mean_token_f1 0.21`, `mean_char_similarity 0.35`,
+`1/7 passed` (threshold 0.5). Per-example review:
+
+| # | Question | Verdict |
+|---|---|---|
+| 1 | Capital of Bangladesh | **Correct**, verbatim match to the full-sentence reference (f1=1.0). Confirms full-sentence references work *when the model happens to answer at that length*. |
+| 2 | National language (Bengali-instructed) | **Correct** ("বাংলা") — but *more terse* than my full-sentence reference, so it scored low (f1=0.0) anyway. The Bengali-instruction fixed the v1 language problem; the reference-length problem just flipped direction. |
+| 3 | National flower (repeated) | **Still wrong** — this time said "লটাস" (lotus), not "জাসমিন" like v1, but still not "শাপলা". Two different wrong answers across two runs is good evidence this is a genuine, repeatable gap in the model's knowledge of this specific fact, not a one-off. |
+| 4 | 2+2 (brevity-instructed) | **Correct** ("4") — the brevity instruction worked perfectly, but the model used an Arabic numeral instead of the Bengali-digit reference ("৪"), so it scored 0 anyway. |
+| 5 | Photosynthesis (short explanation) | Content **correct**, but answered **entirely in English** despite a Bengali question — this example had no Bengali-instruction system message (unlike #2 and #6), so this is as much a dataset-design gap as a model one. |
+| 6 | Currency (English question, Bengali-instructed) | **Correct** ("টাকা"/Taka, with bonus ISO-code detail) and correctly answered in Bengali despite the English question — the Bengali-instruction technique worked here too. |
+| 7 | National bird | **Wrong** — said "Brahminy kite"; the actual national bird is "দোয়েল" (Oriental magpie-robin). A second genuine factual gap. |
+
+**Conclusions (small sample — 7 examples, not a benchmark):**
+- 4 of 7 answers were correct in substance; only 1 of 7 "passed" the
+  default threshold. The gap between those two numbers is the real
+  finding: **`token_f1`/`passed` systematically undercounts correctness
+  for this model**, because its answer length relative to any single
+  reference string is unpredictable — sometimes more verbose (v1),
+  sometimes more terse (#2, #4 here) than the reference. Rewriting
+  references to match one direction doesn't fix the other.
+- The explicit Bengali-instruction system message **did reliably work**
+  (#2, #6) — a validated, reusable technique, not just better reference
+  wording.
+- 2 of 7 were genuine, repeatable factual errors, both specifically
+  about Bangladesh national symbols (flower, bird) — a real, narrow
+  knowledge gap worth knowing about if this model is used for Bangladesh
+  trivia, separate from the scoring-methodology issue entirely.
+- **Net methodology change:** none to the metrics themselves (kept as
+  documented above, per design — the metrics aren't wrong, they're
+  measuring exactly what they say they measure; the mismatch is between
+  "token/string overlap" and "human judgment of correctness" for a
+  verbose model). The actionable change is procedural: for this model,
+  treat `results.jsonl` + manual read-through as the primary signal and
+  the summary `passed` count as, at best, a rough triage filter — not a
+  pass/fail verdict. This conclusion is now validated twice (v1 and v2),
+  not assumed.

@@ -16,6 +16,7 @@ from local_ai.evaluation import (
 FIXTURES = Path(__file__).parent / "fixtures"
 VALID_FIXTURE = FIXTURES / "eval_valid.jsonl"
 INVALID_FIXTURE = FIXTURES / "eval_invalid.jsonl"
+BANGLA_V2_FIXTURE = FIXTURES / "eval_bangla_v2.jsonl"
 
 
 def _config() -> Config:
@@ -70,6 +71,21 @@ def test_load_eval_examples_skips_non_assistant_endings_and_invalid_schema():
     assert skipped == 3  # ends-with-user, missing 'messages', and no-user-message lines
     assert len(examples) == 2
     assert {e.reference for e in examples} == {"Hello!", "Goodbye!"}
+
+
+def test_load_eval_examples_parses_the_v2_bengali_fixture():
+    # v2 was written to fix the reference-style issue found investigating the
+    # v1 real-model run (docs/EVALUATION.md): full-sentence references
+    # matching the model's natural phrasing, plus system messages that
+    # explicitly instruct a Bengali response. This just checks it parses
+    # cleanly with no skipped lines and includes both system-message
+    # examples.
+    examples, total_lines, skipped = load_eval_examples(BANGLA_V2_FIXTURE)
+    assert total_lines == 7
+    assert skipped == 0
+    assert len(examples) == 7
+    with_system_message = [e for e in examples if any(m["role"] == "system" for m in e.context_messages)]
+    assert len(with_system_message) == 2
 
 
 # --- run_evaluation (mocked inference) -------------------------------------------------
