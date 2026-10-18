@@ -97,7 +97,7 @@ LoRA fine-tuning scaffolding is implemented (`local-ai train run`/
 `train compare`, via Apple's MLX framework — see
 [docs/TRAINING.md](docs/TRAINING.md) for the hardware compatibility
 assessment and why MLX was chosen over `transformers`/`peft`/`trl`).
-**A real training run has not been executed** — it needs a ~2.5GB
+**A real training run has not been executed** — it needs a ~2.3GB
 checkpoint download and an explicit `--yes`, both gated on confirmation
 first.
 
@@ -174,9 +174,11 @@ python -m pytest
   `host.docker.internal` networking path to reach the host's Ollama
   from inside a container is documented but not yet verified.
 - **A real `train run --yes` has not been executed.** It needs an MLX
-  checkpoint (~2.5GB) that hasn't been downloaded, and that download
-  plus the actual training run both need explicit confirmation first
-  (see [docs/TRAINING.md](docs/TRAINING.md)).
+  checkpoint (~2.3GB, per the model card) that hasn't been downloaded,
+  and that download plus the actual training run both need explicit
+  confirmation first (see [docs/TRAINING.md](docs/TRAINING.md), which
+  also has a full pre-training verification of checkpoint/dataset/
+  config compatibility against the actually-installed `mlx-lm` version).
 
 **Not implemented (future milestones):**
 - None remaining from the original 5-milestone plan; Docker portability

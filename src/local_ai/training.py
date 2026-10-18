@@ -82,7 +82,7 @@ def check_checkpoint_available(checkpoint_path: Path) -> None:
             "downloads it automatically - fetch it explicitly first (see "
             "docs/TRAINING.md), e.g.:\n"
             f"  huggingface-cli download mlx-community/Qwen3-4B-4bit --local-dir {checkpoint_path}\n"
-            "(~2.5GB download; make sure you want to spend that bandwidth/disk first.)"
+            "(~2.3GB download, per the model card; make sure you want to spend that bandwidth/disk first.)"
         )
 
 
