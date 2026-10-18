@@ -26,7 +26,7 @@ class Config:
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_MODEL_NAME = "qwen3:4b"
-DEFAULT_TIMEOUT_SECONDS = 60
+DEFAULT_TIMEOUT_SECONDS = 180
 
 
 def _parse_bool(raw: str) -> bool:

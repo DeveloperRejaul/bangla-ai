@@ -1,5 +1,6 @@
 from typer.testing import CliRunner
 
+from local_ai import inference
 from local_ai.cli import app
 
 runner = CliRunner()
@@ -12,24 +13,59 @@ def test_help_exits_zero_and_lists_commands():
         assert command in result.stdout
 
 
-def test_models_shows_configuration():
+def test_ask_prints_model_response(monkeypatch):
+    monkeypatch.setattr(inference, "generate", lambda config, prompt: f"echo: {prompt}")
+    result = runner.invoke(app, ["ask", "hello"])
+    assert result.exit_code == 0
+    assert "echo: hello" in result.stdout
+
+
+def test_ask_reports_ollama_error(monkeypatch):
+    def _raise(config, prompt):
+        raise inference.OllamaError("Could not reach Ollama at http://localhost:11434.")
+
+    monkeypatch.setattr(inference, "generate", _raise)
+    result = runner.invoke(app, ["ask", "hello"])
+    assert result.exit_code == 1
+    assert "Could not reach Ollama" in result.output
+
+
+def test_models_reports_pulled_model(monkeypatch):
+    monkeypatch.setattr(inference, "list_local_models", lambda config: ["qwen3:4b"])
     result = runner.invoke(app, ["models"])
     assert result.exit_code == 0
-    assert "Configured model:" in result.stdout
-    assert "Configured inference host:" in result.stdout
+    assert "is pulled and ready" in result.output
 
 
-def test_ask_is_not_yet_implemented_but_validates_config():
-    result = runner.invoke(app, ["ask", "hello"])
-    assert result.exit_code == 2
-    assert "not implemented yet" in result.output
-    assert "Milestone 2" in result.output
+def test_models_reports_missing_model(monkeypatch):
+    monkeypatch.setattr(inference, "list_local_models", lambda config: [])
+    result = runner.invoke(app, ["models"])
+    assert result.exit_code == 0
+    assert "not pulled yet" in result.output
+    assert "ollama pull" in result.output
 
 
-def test_chat_is_not_yet_implemented():
-    result = runner.invoke(app, ["chat"])
-    assert result.exit_code == 2
-    assert "Milestone 2" in result.output
+def test_models_reports_ollama_unreachable(monkeypatch):
+    def _raise(config):
+        raise inference.OllamaError("Could not reach Ollama at http://localhost:11434.")
+
+    monkeypatch.setattr(inference, "list_local_models", _raise)
+    result = runner.invoke(app, ["models"])
+    assert result.exit_code == 1
+    assert "Could not reach Ollama" in result.output
+
+
+def test_chat_exits_cleanly_on_exit_keyword(monkeypatch):
+    result = runner.invoke(app, ["chat"], input="exit\n")
+    assert result.exit_code == 0
+    assert "Exiting." in result.output
+
+
+def test_chat_round_trip(monkeypatch):
+    monkeypatch.setattr(inference, "chat", lambda config, history: "hi there")
+    result = runner.invoke(app, ["chat"], input="hello\nexit\n")
+    assert result.exit_code == 0
+    assert "hi there" in result.output
 
 
 def test_dataset_validate_is_not_yet_implemented():

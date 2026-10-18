@@ -1,17 +1,16 @@
 """Command-line interface for local-ai.
 
-Milestone 1 scope: command skeleton and configuration validation only.
-`ask`, `chat`, and `models` validate config and report that live
-inference is not wired up yet (that's Milestone 2) instead of silently
-pretending to work. `dataset`, `train`, and `evaluate` are placeholders
-for Milestones 3-5. No command here calls a hosted AI API, and no
-command starts a training job.
+`ask`, `chat`, and `models` talk to a local Ollama instance (Milestone 2).
+`dataset`, `train`, and `evaluate` are still placeholders for Milestones
+3-5. No command here calls a hosted AI API, and no command starts a
+training job.
 """
 
 from __future__ import annotations
 
 import typer
 
+from local_ai import inference
 from local_ai.config import Config, ConfigError, load_config
 
 app = typer.Typer(
@@ -45,29 +44,63 @@ def _not_implemented(feature: str, milestone: int) -> None:
 def ask(prompt: str = typer.Argument(..., help="The question or instruction to send to the model.")) -> None:
     """Send a single prompt to the local model and print the answer."""
     config = _load_config_or_exit()
-    typer.echo(f"[config ok] model={config.model_name} host={config.ollama_host}")
-    _not_implemented("ask", milestone=2)
+    try:
+        answer = inference.generate(config, prompt)
+    except inference.OllamaError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    typer.echo(answer)
 
 
 @app.command()
 def chat() -> None:
-    """Start an interactive chat loop with the local model."""
+    """Start an interactive chat loop with the local model. Type 'exit' or 'quit' to leave."""
     config = _load_config_or_exit()
-    typer.echo(f"[config ok] model={config.model_name} host={config.ollama_host}")
-    _not_implemented("chat", milestone=2)
+    history: list[dict[str, str]] = []
+    typer.echo(f"Chatting with {config.model_name} (Ctrl+C or 'exit' to quit)")
+    while True:
+        try:
+            user_input = typer.prompt("you")
+        except (KeyboardInterrupt, EOFError):
+            typer.echo("\nExiting.")
+            break
+        if user_input.strip().lower() in {"exit", "quit"}:
+            typer.echo("Exiting.")
+            break
+        if not user_input.strip():
+            continue
+        history.append({"role": "user", "content": user_input})
+        try:
+            reply = inference.chat(config, history)
+        except inference.OllamaError as exc:
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            history.pop()
+            continue
+        history.append({"role": "assistant", "content": reply})
+        typer.echo(f"model: {reply}")
 
 
 @app.command()
 def models() -> None:
-    """Show the configured model and inference host."""
+    """Show the configured model and whether it's pulled locally in Ollama."""
     config = _load_config_or_exit()
     typer.echo(f"Configured model: {config.model_name}")
     typer.echo(f"Configured inference host: {config.ollama_host}")
     typer.echo(f"Request timeout: {config.request_timeout_seconds}s")
-    typer.secho(
-        "Live availability check against Ollama is not implemented yet (planned for Milestone 2).",
-        fg=typer.colors.YELLOW,
-    )
+    try:
+        local_models = inference.list_local_models(config)
+    except inference.OllamaError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    if config.model_name in local_models:
+        typer.secho(f"'{config.model_name}' is pulled and ready.", fg=typer.colors.GREEN)
+    else:
+        typer.secho(
+            f"'{config.model_name}' is not pulled yet. Run: ollama pull {config.model_name}",
+            fg=typer.colors.YELLOW,
+        )
+    if local_models:
+        typer.echo("Locally available models: " + ", ".join(local_models))
 
 
 @dataset_app.command("validate")

@@ -5,7 +5,7 @@ def test_defaults_when_env_empty():
     config = load_config(env={})
     assert config.ollama_host == "http://localhost:11434"
     assert config.model_name == "qwen3:4b"
-    assert config.request_timeout_seconds == 60
+    assert config.request_timeout_seconds == 180
     assert config.debug is False
 
 
