@@ -1,17 +1,20 @@
 """Command-line interface for local-ai.
 
 `ask`, `chat`, and `models` talk to a local Ollama instance (Milestone 2).
-`dataset`, `train`, and `evaluate` are still placeholders for Milestones
-3-5. No command here calls a hosted AI API, and no command starts a
-training job.
+`dataset validate`/`dataset prepare` work on local JSONL files
+(Milestone 3). `train` and `evaluate` are still placeholders for
+Milestones 4-5. No command here calls a hosted AI API, and no command
+starts a training job.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 
-from local_ai import inference
+from local_ai import dataset, inference
 from local_ai.config import Config, ConfigError, load_config
 
 app = typer.Typer(
@@ -110,17 +113,82 @@ def models() -> None:
 
 @dataset_app.command("validate")
 def dataset_validate(path: str = typer.Argument(..., help="Path to a JSONL dataset file.")) -> None:
-    """Validate a JSONL dataset file."""
-    _not_implemented("dataset validate", milestone=3)
+    """Validate a JSONL dataset file. Does not modify it."""
+    input_path = Path(path)
+    if not input_path.is_file():
+        typer.secho(f"File not found: {input_path}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    result = dataset.validate_jsonl(input_path)
+    typer.echo(
+        f"Checked {result.total_lines} line(s): {result.valid_count} valid, "
+        f"{len(result.errors)} invalid."
+    )
+    max_shown = 50
+    for error in result.errors[:max_shown]:
+        typer.secho(f"  line {error.line_number}: {error.reason}", fg=typer.colors.YELLOW)
+    if len(result.errors) > max_shown:
+        typer.echo(f"  ... and {len(result.errors) - max_shown} more")
+
+    if not result.is_valid:
+        raise typer.Exit(code=1)
+    typer.secho("Dataset is valid.", fg=typer.colors.GREEN)
 
 
 @dataset_app.command("prepare")
 def dataset_prepare(
-    path: str = typer.Argument(..., help="Path to a raw JSONL dataset file."),
-    output: str = typer.Option(..., "--output", help="Where to write the normalized dataset."),
+    path: str = typer.Argument(..., help="Path to a raw JSONL dataset file. Never modified."),
+    output: str = typer.Option(
+        ..., "--output", help="Where to write the normalized train split, e.g. data/processed/train.jsonl."
+    ),
+    val_ratio: float = typer.Option(
+        0.0, "--val-ratio", help="Fraction of deduplicated valid records to hold out for validation."
+    ),
+    test_ratio: float = typer.Option(
+        0.0, "--test-ratio", help="Fraction of deduplicated valid records to hold out for testing."
+    ),
+    seed: int = typer.Option(
+        42, "--seed", help="Random seed for the shuffle before splitting (fixed by default for reproducibility)."
+    ),
 ) -> None:
-    """Normalize a raw dataset into the processed dataset format."""
-    _not_implemented("dataset prepare", milestone=3)
+    """Validate, normalize, deduplicate, and optionally split a raw JSONL dataset.
+
+    Invalid lines are skipped and reported; the raw input file is never
+    modified. If --val-ratio/--test-ratio are set, val.jsonl/test.jsonl
+    are written next to --output in the same directory.
+    """
+    input_path = Path(path)
+    if not input_path.is_file():
+        typer.secho(f"File not found: {input_path}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        result = dataset.prepare_dataset(
+            input_path, Path(output), val_ratio=val_ratio, test_ratio=test_ratio, seed=seed
+        )
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(
+        f"Read {result.total_lines} line(s): {result.valid_records} valid "
+        f"({result.duplicate_records} duplicate, skipped), {result.invalid_records} invalid."
+    )
+    if result.invalid_records:
+        typer.secho(
+            f"{result.invalid_records} invalid line(s) were skipped. "
+            f"Run 'local-ai dataset validate {path}' to see details.",
+            fg=typer.colors.YELLOW,
+        )
+    typer.echo(f"Wrote {result.train_count} train record(s) to {result.train_path}")
+    if result.val_path:
+        typer.echo(f"Wrote {result.val_count} val record(s) to {result.val_path}")
+    if result.test_path:
+        typer.echo(f"Wrote {result.test_count} test record(s) to {result.test_path}")
+
+    if result.train_count == 0 and not result.val_path and not result.test_path:
+        typer.secho("No valid records to write.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
 
 
 @app.command()

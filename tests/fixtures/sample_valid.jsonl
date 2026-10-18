@@ -1,0 +1,6 @@
+{"messages":[{"role":"user","content":"What is the capital of Bangladesh?"},{"role":"assistant","content":"The capital of Bangladesh is Dhaka."}]}
+{"messages":[{"role":"user","content":"বাংলাদেশের রাজধানী কী?"},{"role":"assistant","content":"বাংলাদেশের রাজধানী ঢাকা।"}]}
+{"messages":[{"role":"user","content":"  What is the capital of Bangladesh?  "},{"role":"assistant","content":"  The capital of Bangladesh is Dhaka.  "}]}
+{"messages":[{"role":"system","content":"You are a helpful assistant."},{"role":"user","content":"What is 2+2?"},{"role":"assistant","content":"4"}]}
+{"messages":[{"role":"user","content":"Translate 'hello' to Bengali."},{"role":"assistant","content":"হ্যালো"}]}
+{"messages":[{"role":"user","content":"What is the largest river in Bangladesh?"},{"role":"assistant","content":"The Padma River is one of the largest rivers in Bangladesh."}]}

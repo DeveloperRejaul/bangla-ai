@@ -1,9 +1,14 @@
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 from local_ai import inference
 from local_ai.cli import app
 
 runner = CliRunner()
+FIXTURES = Path(__file__).parent / "fixtures"
+VALID_FIXTURE = FIXTURES / "sample_valid.jsonl"
+INVALID_FIXTURE = FIXTURES / "sample_invalid.jsonl"
 
 
 def test_help_exits_zero_and_lists_commands():
@@ -68,10 +73,63 @@ def test_chat_round_trip(monkeypatch):
     assert "hi there" in result.output
 
 
-def test_dataset_validate_is_not_yet_implemented():
-    result = runner.invoke(app, ["dataset", "validate", "some.jsonl"])
-    assert result.exit_code == 2
-    assert "Milestone 3" in result.output
+def test_dataset_validate_accepts_valid_file():
+    result = runner.invoke(app, ["dataset", "validate", str(VALID_FIXTURE)])
+    assert result.exit_code == 0
+    assert "Dataset is valid." in result.output
+
+
+def test_dataset_validate_reports_errors_for_invalid_file():
+    result = runner.invoke(app, ["dataset", "validate", str(INVALID_FIXTURE)])
+    assert result.exit_code == 1
+    assert "7 invalid" in result.output
+    assert "line 3: missing 'messages' field" in result.output
+
+
+def test_dataset_validate_missing_file():
+    result = runner.invoke(app, ["dataset", "validate", "/no/such/file.jsonl"])
+    assert result.exit_code == 1
+    assert "File not found" in result.output
+
+
+def test_dataset_prepare_writes_normalized_output(tmp_path):
+    output = tmp_path / "train.jsonl"
+    result = runner.invoke(app, ["dataset", "prepare", str(VALID_FIXTURE), "--output", str(output)])
+    assert result.exit_code == 0
+    assert output.exists()
+    assert "Wrote 5 train record(s)" in result.output
+
+
+def test_dataset_prepare_with_split(tmp_path):
+    output = tmp_path / "train.jsonl"
+    result = runner.invoke(
+        app,
+        [
+            "dataset", "prepare", str(VALID_FIXTURE),
+            "--output", str(output),
+            "--val-ratio", "0.2",
+            "--test-ratio", "0.2",
+            "--seed", "7",
+        ],
+    )
+    assert result.exit_code == 0
+    assert (tmp_path / "val.jsonl").exists()
+    assert (tmp_path / "test.jsonl").exists()
+
+
+def test_dataset_prepare_rejects_bad_ratios(tmp_path):
+    output = tmp_path / "train.jsonl"
+    result = runner.invoke(
+        app,
+        [
+            "dataset", "prepare", str(VALID_FIXTURE),
+            "--output", str(output),
+            "--val-ratio", "0.6",
+            "--test-ratio", "0.6",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "must be less than 1" in result.output
 
 
 def test_train_never_runs_silently():

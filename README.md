@@ -4,8 +4,9 @@ A local-first, command-line-only AI project: no frontend, no hosted AI
 API, no public server. You type a prompt in the terminal; a model
 running on your own machine answers.
 
-This is Milestone 2 of a staged build (see [Project status](#project-status)
-below): local inference via Ollama is wired up and working.
+This is Milestone 3 of a staged build (see [Project status](#project-status)
+below): local inference via Ollama, plus dataset validation/preparation,
+are wired up and working.
 
 ## Quick start (macOS, Apple Silicon)
 
@@ -29,7 +30,9 @@ local-ai --help
 local-ai models                      # shows configured model/host + whether it's pulled
 local-ai ask "Explain photosynthesis in simple Bengali."
 local-ai chat                        # interactive loop; 'exit'/'quit' or Ctrl+C to leave
-local-ai dataset validate ./data/raw/example.jsonl   # Milestone 3
+local-ai dataset validate ./data/raw/my_dataset.jsonl
+local-ai dataset prepare ./data/raw/my_dataset.jsonl --output ./data/processed/train.jsonl \
+  --val-ratio 0.1 --test-ratio 0.1   # fixed-seed split, see docs/DATASETS.md
 local-ai train                                       # always experimental, never runs silently
 local-ai evaluate                                     # Milestone 4
 ```
@@ -76,12 +79,14 @@ slow on this hardware (a single response took over two minutes in
 testing on this MacBook Air M4). The default timeout was raised to 180s
 accordingly; see `.env.example`.
 
-## Datasets and fine-tuning
+## Datasets
 
-Not implemented yet. See [local_ai_cli_project_spec.md](local_ai_cli_project_spec.md)
-for the full plan: JSONL dataset validation (Milestone 3), evaluation
-(Milestone 4), and an optional LoRA/PEFT fine-tuning workflow
-(Milestone 5) gated on verifying hardware/framework support first.
+JSONL validation and preparation are implemented — see
+[docs/DATASETS.md](docs/DATASETS.md) for the schema, commands, and
+provenance/license/consent guidance. Evaluation (Milestone 4) and an
+optional LoRA/PEFT fine-tuning workflow (Milestone 5, gated on verifying
+hardware/framework support) are not implemented yet; see
+[local_ai_cli_project_spec.md](local_ai_cli_project_spec.md) for the full plan.
 
 ## Tests
 
@@ -103,12 +108,23 @@ python -m pytest
   Bengali prompt producing a correct Bengali answer, and a real
   "Ollama unreachable" error path (stopped the service, confirmed the
   error message, restarted it).
-- `dataset`/`train`/`evaluate` still exist as placeholders, validate
-  config where applicable, and clearly report their target milestone
-  (no command silently pretends to work or starts a job).
+- `dataset validate`/`dataset prepare` (`src/local_ai/dataset.py`,
+  stdlib `json`/`random`, no new dependency): JSONL schema validation
+  (required `messages`, valid roles, non-empty content, at least one
+  user + one assistant message), normalization, deduplication, and
+  fixed-seed train/val/test splitting with no leakage between splits.
+  Error messages report line numbers and structural reasons only,
+  never the line's actual content. Verified against committed synthetic
+  fixtures (`tests/fixtures/*.jsonl`) both via the test suite and by
+  hand: confirmed raw input is never modified, duplicate records are
+  deduplicated, and splits with the same seed are byte-identical across
+  runs.
+- `train`/`evaluate` still exist as placeholders, clearly reporting
+  their target milestone (no command silently pretends to work or
+  starts a job).
 - Unit tests for config validation, CLI behavior (mocked inference, so
-  tests don't need Ollama running), and inference error handling.
-  Verified: `python -m pytest` → 20 passed.
+  tests don't need Ollama running), inference error handling, and
+  dataset validation/preparation. Verified: `python -m pytest` → 34 passed.
 
 **Written but not tested:**
 - `Dockerfile` / `compose.yaml` — Docker is not installed on this
@@ -118,7 +134,6 @@ python -m pytest
   from inside a container is documented but not yet verified.
 
 **Not implemented (future milestones):**
-- Dataset validation/preparation — Milestone 3.
 - Evaluation — Milestone 4.
 - LoRA/PEFT fine-tuning — Milestone 5.
 

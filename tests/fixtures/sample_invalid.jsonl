@@ -1,0 +1,9 @@
+{"messages":[{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello!"}]}
+{"messages":[{"role":"user","content":"Hi",}]}
+{"foo":"bar"}
+{"messages":"not-a-list"}
+{"messages":[{"role":"bot","content":"hi"}]}
+{"messages":[{"role":"user","content":"   "}]}
+{"messages":[{"role":"user","content":"only user here"}]}
+
+{"messages":[{"role":"user","content":"Bye"},{"role":"assistant","content":"Goodbye!"}]}
