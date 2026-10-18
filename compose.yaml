@@ -1,0 +1,17 @@
+# Host-Ollama mode (default): Ollama runs on the Mac host, not in a
+# container. Install/run it separately (see README) and set
+# LOCAL_AI_OLLAMA_HOST in .env to reach it from inside this container
+# (http://host.docker.internal:11434 on Docker Desktop for Mac).
+#
+# No ports are published: this is a CLI tool, not a server.
+services:
+  cli:
+    build: .
+    image: local-ai-cli:dev
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+    stdin_open: true
+    tty: true
