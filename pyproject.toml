@@ -11,6 +11,7 @@ readme = "README.md"
 license = { text = "MIT" }
 dependencies = [
     "typer>=0.15,<0.28",
+    "rich>=13,<16",
 ]
 
 [project.optional-dependencies]

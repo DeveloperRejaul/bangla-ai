@@ -9,6 +9,7 @@ training job.
 from __future__ import annotations
 
 import typer
+from rich.console import Console
 
 from local_ai import inference
 from local_ai.config import Config, ConfigError, load_config
@@ -20,6 +21,8 @@ app = typer.Typer(
 )
 dataset_app = typer.Typer(help="Dataset validation and preparation (Milestone 3).")
 app.add_typer(dataset_app, name="dataset")
+
+console = Console()
 
 
 def _load_config_or_exit() -> Config:
@@ -45,7 +48,8 @@ def ask(prompt: str = typer.Argument(..., help="The question or instruction to s
     """Send a single prompt to the local model and print the answer."""
     config = _load_config_or_exit()
     try:
-        answer = inference.generate(config, prompt)
+        with console.status(f"[cyan]Thinking ({config.model_name})...", spinner="dots"):
+            answer = inference.generate(config, prompt)
     except inference.OllamaError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
@@ -71,7 +75,8 @@ def chat() -> None:
             continue
         history.append({"role": "user", "content": user_input})
         try:
-            reply = inference.chat(config, history)
+            with console.status(f"[cyan]Thinking ({config.model_name})...", spinner="dots"):
+                reply = inference.chat(config, history)
         except inference.OllamaError as exc:
             typer.secho(str(exc), fg=typer.colors.RED, err=True)
             history.pop()
