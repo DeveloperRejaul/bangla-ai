@@ -280,6 +280,11 @@ def train_compare(
     output_dir: str = typer.Option(
         "artifacts/lora-comparisons", "--output-dir", help="Base directory for a new timestamped comparison run."
     ),
+    max_tokens: int = typer.Option(
+        400,
+        "--max-tokens",
+        help="Max generation tokens per side. This model's <think> reasoning can run past 200 tokens before the answer even appears, so the default is more generous than that - but may still truncate; check output for cut-off text before trusting scores.",
+    ),
 ) -> None:
     """Compare the base checkpoint against base+adapter on the same held-out eval set.
 
@@ -302,7 +307,7 @@ def train_compare(
 
     try:
         with console.status(f"[cyan]Comparing base vs. tuned on {len(examples)} example(s)...", spinner="dots"):
-            results = training.compare_base_and_tuned(checkpoint_path, adapter_path, examples)
+            results = training.compare_base_and_tuned(checkpoint_path, adapter_path, examples, max_tokens=max_tokens)
     except training.TrainingError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)

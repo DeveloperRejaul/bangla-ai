@@ -211,7 +211,7 @@ def run_training(config: TrainingConfig) -> Path:
     return config.output_dir
 
 
-def _mlx_chat(model, tokenizer, messages: list[dict[str, str]], max_tokens: int = 200) -> str:
+def _mlx_chat(model, tokenizer, messages: list[dict[str, str]], max_tokens: int = 400) -> str:
     from mlx_lm import generate as mlx_generate
 
     prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -222,11 +222,21 @@ def compare_base_and_tuned(
     checkpoint_path: Path,
     adapter_path: Path,
     eval_examples: list[evaluation.EvalExample],
+    max_tokens: int = 400,
 ) -> list[ComparisonResult]:
     """Run the same held-out eval examples through the base checkpoint and
     the base+adapter checkpoint, using the same mlx_lm runtime for both so
     the comparison isolates the fine-tuning effect (not a quantization or
-    runtime difference). Reuses evaluation.py's metric functions directly."""
+    runtime difference). Reuses evaluation.py's metric functions directly.
+
+    max_tokens defaults to 400, not mlx_lm's own 256 default: this is a
+    "thinking" model whose <think> reasoning block alone can run past 200
+    tokens, which previously truncated the base model's answer before it
+    even appeared - unfairly penalizing the base side of the comparison.
+    400 is a first attempt, not guaranteed sufficient - check actual
+    output for truncation (no closing punctuation, cut-off mid-word)
+    before trusting the resulting scores.
+    """
     check_mlx_lm_available()
     check_checkpoint_available(checkpoint_path)
     if not adapter_path.exists():
@@ -239,8 +249,8 @@ def compare_base_and_tuned(
 
     results: list[ComparisonResult] = []
     for example in eval_examples:
-        base_pred = _mlx_chat(base_model, base_tokenizer, example.context_messages)
-        tuned_pred = _mlx_chat(tuned_model, tuned_tokenizer, example.context_messages)
+        base_pred = _mlx_chat(base_model, base_tokenizer, example.context_messages, max_tokens=max_tokens)
+        tuned_pred = _mlx_chat(tuned_model, tuned_tokenizer, example.context_messages, max_tokens=max_tokens)
         results.append(
             ComparisonResult(
                 line_number=example.line_number,
