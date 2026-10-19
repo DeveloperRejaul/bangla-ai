@@ -110,7 +110,7 @@ def test_compare_base_and_tuned_uses_mocked_mlx_lm(tmp_path, monkeypatch):
         return ("tuned" if adapter_path is not None else "base"), FakeTokenizer()
 
     def fake_generate(model, tokenizer, prompt, max_tokens=200, verbose=False):
-        return "tuned-answer" if model == "tuned" else "base-answer"
+        return "Dhaka" if model == "tuned" else "nope"
 
     monkeypatch.setattr(mlx_lm, "load", fake_load)
     monkeypatch.setattr(mlx_lm, "generate", fake_generate)
@@ -120,14 +120,14 @@ def test_compare_base_and_tuned_uses_mocked_mlx_lm(tmp_path, monkeypatch):
             line_number=1,
             question="Q?",
             context_messages=[{"role": "user", "content": "Q?"}],
-            reference="tuned-answer",
+            reference="Dhaka",
         )
     ]
     results = training.compare_base_and_tuned(checkpoint_path, adapter_path, examples)
 
     assert len(results) == 1
-    assert results[0].base_prediction == "base-answer"
-    assert results[0].tuned_prediction == "tuned-answer"
+    assert results[0].base_prediction == "nope"
+    assert results[0].tuned_prediction == "Dhaka"
     assert results[0].tuned_token_f1 == 1.0
     assert results[0].base_token_f1 == 0.0
 

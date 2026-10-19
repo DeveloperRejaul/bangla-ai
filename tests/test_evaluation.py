@@ -4,6 +4,7 @@ from pathlib import Path
 from local_ai import inference
 from local_ai.config import Config
 from local_ai.evaluation import (
+    METRICS_VERSION,
     char_similarity,
     exact_match,
     load_eval_examples,
@@ -40,6 +41,59 @@ def test_exact_match_is_case_and_whitespace_insensitive():
 def test_exact_match_handles_bengali_text():
     assert exact_match("বাংলা", "  বাংলা  ")
     assert not exact_match("বাংলা", "ইংরেজি")
+
+
+def test_markdown_bold_english_answer_matches_bare_reference():
+    # The exact bug found investigating Milestone 5's real comparison run:
+    # qwen3:4b wraps short factual answers in **bold**, and the metric's
+    # tokenizer never stripped markdown, so a correct answer scored as if
+    # it were wrong.
+    assert exact_match("**Dhaka**.", "Dhaka")
+    assert token_f1("**Dhaka**.", "Dhaka") == 1.0
+    assert char_similarity("**Dhaka**.", "Dhaka") == 1.0
+
+
+def test_markdown_bold_bengali_answer_matches_bare_reference():
+    # Same bug, Bengali script - and specifically must NOT corrupt the
+    # text: Bengali vowel signs (e.g. the two া marks in শাপলা) are
+    # Unicode combining marks, which a naive \w-based "keep word chars"
+    # filter actually strips, silently mangling the word. This asserts
+    # the fix preserves it exactly.
+    assert exact_match("**শাপলা**।", "শাপলা")
+    assert token_f1("**শাপলা**।", "শাপলা") == 1.0
+    assert char_similarity("**শাপলা**।", "শাপলা") == 1.0
+
+
+def test_surrounding_punctuation_does_not_block_a_match():
+    assert exact_match("Dhaka.", "Dhaka")
+    assert exact_match("Dhaka!", "Dhaka")
+    assert exact_match('"Dhaka"', "Dhaka")
+    assert exact_match("(Dhaka)", "Dhaka")
+    assert exact_match("বাংলা।", "বাংলা")
+
+
+def test_punctuation_normalization_does_not_fuse_separate_words():
+    # Deleting punctuation outright (instead of replacing it with a
+    # space) can silently merge two unrelated words into one token,
+    # which would make them NOT match two separate reference words.
+    assert token_f1("Dhaka—Bangladesh", "Dhaka Bangladesh") == 1.0
+
+
+def test_genuinely_wrong_answers_still_score_low_after_normalization():
+    # The fix must not accidentally make incorrect answers look correct.
+    assert not exact_match("**Chittagong**.", "Dhaka")
+    assert token_f1("**Chittagong**.", "Dhaka") == 0.0
+    assert not exact_match("**জাসমিন**।", "শাপলা")
+    assert token_f1("**জাসমিন**।", "শাপলা") == 0.0
+
+
+def test_sentence_wrapped_markdown_answer_is_not_exact_match_but_scores_well():
+    # A full sentence containing the bolded answer should NOT count as an
+    # exact match (it isn't one), but token_f1 should still reward the
+    # overlap - this was already true before the fix and must stay true.
+    prediction = "The capital of Bangladesh is **Dhaka**."
+    assert not exact_match(prediction, "Dhaka")
+    assert 0.0 < token_f1(prediction, "Dhaka") < 1.0
 
 
 def test_token_f1_partial_overlap():
@@ -143,6 +197,7 @@ def test_summarize_computes_aggregate_metrics(monkeypatch):
     assert summary.skipped_invalid == skipped
     assert 0.0 <= summary.mean_token_f1 <= 1.0
     assert 0.0 <= summary.exact_match_rate <= 1.0
+    assert summary.metrics_version == METRICS_VERSION
 
 
 def test_write_run_never_overwrites_a_previous_run(tmp_path, monkeypatch):

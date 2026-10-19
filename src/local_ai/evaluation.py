@@ -8,12 +8,22 @@ to the model as the conversation it must answer. This works for both
 single-turn QA ([user, assistant]) and multi-turn context.
 
 Metrics (see docs/EVALUATION.md for full definitions and rationale):
-- exact_match: case-folded, whitespace-normalized exact string equality.
-- token_f1: precision/recall F1 over whitespace-separated token overlap
-  (the metric classically used for SQuAD-style QA evaluation).
+- exact_match: case-folded, whitespace-normalized exact string equality,
+  ignoring Markdown emphasis markers and surrounding punctuation.
+- token_f1: precision/recall F1 over normalized token overlap (the
+  metric classically used for SQuAD-style QA evaluation).
 - char_similarity: difflib.SequenceMatcher ratio in [0, 1] — a
   longest-matching-block similarity, more forgiving of rewording,
   punctuation, or small typos than exact/token matching.
+
+Normalization (METRICS_VERSION below) strips Markdown emphasis markers
+(*_`~) and punctuation/symbol characters by Unicode category, not by a
+fixed ASCII list or a \\w-based allowlist - the latter actually corrupts
+Bengali text (Python's \\w excludes the Unicode "Mc" combining-mark
+category that Bengali vowel signs use, silently dropping them). Letters,
+combining marks, and digits in any script are preserved; punctuation is
+replaced with a space (not deleted outright) so unrelated words never
+fuse together (e.g. "word1—word2" stays two tokens, not "word1word2").
 
 No metric here relies only on exact string matching. Inference goes
 through local_ai.inference, which only ever talks to the configured
@@ -25,6 +35,7 @@ from __future__ import annotations
 import difflib
 import json
 import re
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +43,10 @@ from pathlib import Path
 from local_ai import dataset as dataset_module
 from local_ai import inference
 from local_ai.config import Config
+
+# Bumped whenever normalization/scoring logic changes, so saved results
+# (EvalSummary.metrics_version) record which formula produced them.
+METRICS_VERSION = "2-markdown-punctuation-normalized"
 
 
 @dataclass
@@ -67,10 +82,30 @@ class EvalSummary:
     exact_match_rate: float
     mean_token_f1: float
     mean_char_similarity: float
+    metrics_version: str = METRICS_VERSION
+
+
+_MARKDOWN_EMPHASIS = re.compile(r"[*_`~]+")
+
+
+def _strip_formatting(text: str) -> str:
+    """Drop Markdown emphasis markers; replace punctuation/symbol
+    characters (by Unicode category, not a fixed list) with a space so
+    words never fuse together. Letters, combining marks (needed for
+    Bengali vowel signs), and digits in any script are preserved."""
+    text = _MARKDOWN_EMPHASIS.sub("", text)
+    chars = []
+    for ch in text:
+        if ch.isspace():
+            chars.append(ch)
+        else:
+            category = unicodedata.category(ch)
+            chars.append(ch if category[0] in ("L", "M", "N") else " ")
+    return "".join(chars)
 
 
 def _normalize_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip().lower())
+    return re.sub(r"\s+", " ", _strip_formatting(text.strip().lower())).strip()
 
 
 def _tokenize(text: str) -> list[str]:

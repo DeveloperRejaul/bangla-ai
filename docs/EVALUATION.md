@@ -45,16 +45,32 @@ is ever contacted, and no model weights are changed.
 None of these rely on exact string matching alone (deliberately: model
 phrasing legitimately varies even when the answer is correct).
 
-- **`exact_match`** — case-folded, whitespace-normalized exact string
-  equality. Strict; mostly useful for single-word/short-fact answers
-  (e.g. "what's the capital of X").
-- **`token_f1`** — precision/recall F1 over whitespace-separated token
-  overlap (bag-of-words), the metric classically used for SQuAD-style
-  QA evaluation. Rewards partial overlap even when word order or
+- **`exact_match`** — case-folded, normalized exact string equality.
+  Strict; mostly useful for single-word/short-fact answers (e.g. "what's
+  the capital of X").
+- **`token_f1`** — precision/recall F1 over normalized token overlap
+  (bag-of-words), the metric classically used for SQuAD-style QA
+  evaluation. Rewards partial overlap even when word order or
   surrounding phrasing differs.
 - **`char_similarity`** — `difflib.SequenceMatcher` ratio (0-1) on the
   normalized text. A longest-matching-block similarity; more forgiving
   of rewording, punctuation, and minor typos than token overlap.
+
+**Normalization (`METRICS_VERSION = "2-markdown-punctuation-normalized"`,
+recorded in every `summary.json`)**: lowercases, strips Markdown
+emphasis markers (`**`/`__`/`` ` ``/`~`), and replaces punctuation/symbol
+characters with a space (by Unicode category — not a fixed ASCII list,
+and deliberately not a `\w`-based allowlist, since Python's `\w`
+excludes the Unicode combining-mark category that Bengali vowel signs
+use and would silently corrupt Bengali text). Punctuation is replaced
+with a space rather than deleted, so two unrelated words never fuse into
+one token. **Found and fixed after the Milestone 5 training comparison
+surfaced it**: before this, `**Dhaka**.` never matched the reference
+`Dhaka` at all — every model answer wrapped in Markdown bold scored as
+if it were wrong, deflating scores throughout earlier evaluation runs
+(the "v1"/"v2" results earlier in this doc predate the fix and are kept
+as-is below; don't compare their raw numbers against new runs without
+accounting for this).
 
 A per-example `passed` flag is `token_f1 >= --pass-threshold` (default
 `0.5`). **This is a heuristic cutoff for a quick summary, not a
@@ -82,7 +98,7 @@ run:
 ```
 artifacts/evaluations/20261019T120000Z_qwen3-4b/
 ├── results.jsonl   # one line per example: question, reference, prediction, all three scores, passed
-└── summary.json    # aggregate: model, dataset path, timestamp, counts, mean scores
+└── summary.json    # aggregate: model, dataset path, timestamp, counts, mean scores, metrics_version
 ```
 
 `results.jsonl` contains the actual question/reference/prediction text
